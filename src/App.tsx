@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { Home, Compass, Film, User, Play, ChevronLeft, MoreHorizontal, Heart, MessageCircle, Share2, Bookmark, Loader2, Download, List, Search } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
+import { safeFetch } from './lib/api-fallback';
 
 // MOCK DATA for Video Feed
 const MOCK_VIDEOS = [
@@ -115,8 +116,7 @@ function HomePage() {
   if (location === "/profile") pageTitle = "Profile";
 
   useEffect(() => {
-    fetch('/api/latest')
-      .then(res => res.json())
+    safeFetch('/api/latest')
       .then(data => {
         if (data.success) {
           setAllSeries(data.data);
@@ -298,8 +298,7 @@ function VideoFeedPage() {
   // Fetch details to get total episodes
   useEffect(() => {
     if (!collectionId) return;
-    fetch(`/api/details/${provider}/${collectionId}`)
-      .then(res => res.json())
+    safeFetch(`/api/details/${provider}/${collectionId}`)
       .then(data => {
         if (data.success && data.data) {
           setTotalEpisodes(data.data.total_episodes || 0);
@@ -333,10 +332,9 @@ function VideoFeedPage() {
     setLoading(true);
     
     // Fetch episode currentEpisode
-    fetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok || !data.success) {
+    safeFetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
+      .then(data => {
+        if (!data.success) {
           throw new Error(data.error || data.message || "Gagal memuat video");
         }
         return data;
@@ -345,7 +343,7 @@ function VideoFeedPage() {
         if (data.videoUrl) {
           setVideos([{
             id: currentEpisode.toString(),
-            url: `/api/proxy-video?url=${encodeURIComponent(data.videoUrl)}`,
+            url: data.videoUrl,
             rawUrl: data.rawUrl,
             title: data.title || `Episode ${currentEpisode}`,
             description: '',
@@ -437,7 +435,7 @@ function VideoFeedPage() {
   );
 }
 
-function VideoItem({ video, isActive }: { video: any, isActive: boolean }) {
+function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [liked, setLiked] = useState(false);
