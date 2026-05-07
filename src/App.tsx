@@ -116,28 +116,41 @@ function HomePage() {
   if (location === "/profile") pageTitle = "Profile";
 
   useEffect(() => {
-    fetch('/api/latest')
-      .then(res => {
-        if (!res.ok) throw new Error("API Route failed: " + res.status);
-        return res.json();
-      })
-      .then(data => {
-        if (data.success) {
-          setAllSeries(data.data);
-          setSeries(data.data);
-          if (data.data.length === 0) {
-            setErrorMsg("Data kosong dari API (panjang 0)");
+    let retryCount = 0;
+    const fetchLatest = () => {
+      fetch('/api/latest')
+        .then(res => {
+          if (!res.ok) {
+            if ((res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 3) {
+              retryCount++;
+              setTimeout(fetchLatest, 1500); // retry after 1.5s
+              throw new Error("Temporary error, retrying...");
+            }
+            throw new Error(`API Route failed: ${res.status}`);
           }
-        } else {
-          setErrorMsg(data.message || "Gagal memuat API");
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setErrorMsg(err.message || "Terjadi kesalahan fetch");
-        setLoading(false);
-      });
+          return res.json();
+        })
+        .then(data => {
+          if (data && data.success) {
+            setAllSeries(data.data);
+            setSeries(data.data);
+            setErrorMsg(null);
+            if (data.data.length === 0) {
+              setErrorMsg("Data kosong dari API (panjang 0)");
+            }
+          } else if (data) {
+            setErrorMsg(data.message || "Gagal memuat API");
+          }
+          setLoading(false);
+        })
+        .catch(err => {
+          if (err.message === "Temporary error, retrying...") return;
+          console.error(err);
+          setErrorMsg(err.message || "Terjadi kesalahan fetch");
+          setLoading(false);
+        });
+    };
+    fetchLatest();
   }, []);
 
   useEffect(() => {
@@ -315,7 +328,7 @@ function VideoFeedPage() {
     if (!collectionId) return;
     fetch(`/api/details/${provider}/${collectionId}`)
       .then(res => {
-        if (!res.ok) throw new Error("API Route failed");
+        if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
       })
       .then(data => {
@@ -353,7 +366,7 @@ function VideoFeedPage() {
     // Fetch episode currentEpisode
     fetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
       .then(res => {
-        if (!res.ok) throw new Error("API Route failed");
+        if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
       })
       .then(data => {
