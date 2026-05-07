@@ -101,6 +101,7 @@ function HomePage() {
   const [allSeries, setAllSeries] = useState<any[]>([]);
   const [series, setSeries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTabTerbaru, setActiveTabTerbaru] = useState<'ID' | 'CN'>('ID');
@@ -117,18 +118,24 @@ function HomePage() {
   useEffect(() => {
     fetch('/api/latest')
       .then(res => {
-        if (!res.ok) throw new Error("API Route failed");
+        if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
       })
       .then(data => {
         if (data.success) {
           setAllSeries(data.data);
           setSeries(data.data);
+          if (data.data.length === 0) {
+            setErrorMsg("Data kosong dari API (panjang 0)");
+          }
+        } else {
+          setErrorMsg(data.message || "Gagal memuat API");
         }
         setLoading(false);
       })
       .catch(err => {
         console.error(err);
+        setErrorMsg(err.message || "Terjadi kesalahan fetch");
         setLoading(false);
       });
   }, []);
@@ -200,6 +207,11 @@ function HomePage() {
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <Loader2 className="animate-spin text-red-500" size={32} />
+        </div>
+      ) : errorMsg ? (
+        <div className="flex flex-col justify-center items-center h-64 px-4 text-center">
+          <p className="text-red-400 font-medium mb-2">Error: {errorMsg}</p>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-800 rounded-lg text-sm">Coba Lagi</button>
         </div>
       ) : (
         <main className="px-3 space-y-3 mt-2">
@@ -354,7 +366,7 @@ function VideoFeedPage() {
         if (data.videoUrl) {
           setVideos([{
             id: currentEpisode.toString(),
-            url: data.videoUrl,
+            url: `/api/proxy-video?url=${encodeURIComponent(data.videoUrl)}`,
             rawUrl: data.rawUrl,
             title: data.title || `Episode ${currentEpisode}`,
             description: '',
