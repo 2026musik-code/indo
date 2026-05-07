@@ -1,7 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { Home, Compass, Film, User, Play, ChevronLeft, MoreHorizontal, Heart, MessageCircle, Share2, Bookmark, Loader2, Download, List, Search } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
-import { safeFetch } from './lib/api-fallback';
 
 // MOCK DATA for Video Feed
 const MOCK_VIDEOS = [
@@ -116,7 +115,11 @@ function HomePage() {
   if (location === "/profile") pageTitle = "Profile";
 
   useEffect(() => {
-    safeFetch('/api/latest')
+    fetch('/api/latest')
+      .then(res => {
+        if (!res.ok) throw new Error("API Route failed");
+        return res.json();
+      })
       .then(data => {
         if (data.success) {
           setAllSeries(data.data);
@@ -298,7 +301,11 @@ function VideoFeedPage() {
   // Fetch details to get total episodes
   useEffect(() => {
     if (!collectionId) return;
-    safeFetch(`/api/details/${provider}/${collectionId}`)
+    fetch(`/api/details/${provider}/${collectionId}`)
+      .then(res => {
+        if (!res.ok) throw new Error("API Route failed");
+        return res.json();
+      })
       .then(data => {
         if (data.success && data.data) {
           setTotalEpisodes(data.data.total_episodes || 0);
@@ -332,7 +339,11 @@ function VideoFeedPage() {
     setLoading(true);
     
     // Fetch episode currentEpisode
-    safeFetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
+    fetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
+      .then(res => {
+        if (!res.ok) throw new Error("API Route failed");
+        return res.json();
+      })
       .then(data => {
         if (!data.success) {
           throw new Error(data.error || data.message || "Gagal memuat video");
