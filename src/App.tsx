@@ -36,25 +36,25 @@ function BottomNav() {
   const path = location.pathname;
 
   return (
-    <nav className="fixed bottom-0 w-full md:max-w-md bg-black/90 backdrop-blur-md border-t border-slate-800 text-slate-400 z-50 px-6 py-3 flex justify-between items-center safe-area-bottom">
-      <Link to="/" className={`flex flex-col items-center gap-1 transition-colors ${path === '/' ? 'text-red-500' : 'hover:text-white'}`}>
+    <nav className="fixed bottom-0 w-full md:max-w-md bg-black/95 border-t border-slate-800 text-slate-400 z-50 px-6 py-2 flex justify-between items-center safe-area-bottom pb-4">
+      <Link to="/" className={`flex flex-col items-center gap-1 transition-colors ${path === '/' ? 'text-white' : 'hover:text-white'}`}>
         <Home size={24} />
-        <span className="text-[10px] font-medium">Home</span>
+        <span className={`text-[10px] font-bold ${path === '/' ? 'text-white' : ''}`}>Home</span>
       </Link>
-      <Link to="/discover" className={`flex flex-col items-center gap-1 transition-colors ${path === '/discover' ? 'text-red-500' : 'hover:text-white'}`}>
+      <Link to="/discover" className={`flex flex-col items-center gap-1 transition-colors ${path === '/discover' ? 'text-white' : 'hover:text-white'}`}>
         <Compass size={24} />
-        <span className="text-[10px] font-medium">Discover</span>
+        <span className={`text-[10px] font-bold ${path === '/discover' ? 'text-white' : ''}`}>Discover</span>
       </Link>
-      <Link to="/watch/feed" className="flex items-center justify-center -mt-6 bg-red-600 text-white w-12 h-12 rounded-full shadow-lg shadow-red-600/30">
-        <Play size={24} className="ml-1" />
+      <Link to="/watch/feed" className="flex items-center justify-center bg-white text-black w-11 h-8 rounded-lg font-bold">
+        <Play size={20} className="" fill="black" />
       </Link>
-      <Link to="/library" className={`flex flex-col items-center gap-1 transition-colors ${path === '/library' ? 'text-red-500' : 'hover:text-white'}`}>
+      <Link to="/library" className={`flex flex-col items-center gap-1 transition-colors ${path === '/library' ? 'text-white' : 'hover:text-white'}`}>
         <Film size={24} />
-        <span className="text-[10px] font-medium">Library</span>
+        <span className={`text-[10px] font-bold ${path === '/library' ? 'text-white' : ''}`}>Library</span>
       </Link>
-      <Link to="/profile" className={`flex flex-col items-center gap-1 transition-colors ${path === '/profile' ? 'text-red-500' : 'hover:text-white'}`}>
+      <Link to="/profile" className={`flex flex-col items-center gap-1 transition-colors ${path === '/profile' ? 'text-white' : 'hover:text-white'}`}>
         <User size={24} />
-        <span className="text-[10px] font-medium">Me</span>
+        <span className={`text-[10px] font-bold ${path === '/profile' ? 'text-white' : ''}`}>Me</span>
       </Link>
     </nav>
   );
@@ -103,7 +103,9 @@ function HomePage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTabTerbaru, setActiveTabTerbaru] = useState<'ID' | 'CN'>('ID');
   
+  const scrollRef = useRef<HTMLDivElement>(null);
   const routerLocation = useLocation();
   const location = routerLocation.pathname;
 
@@ -126,6 +128,22 @@ function HomePage() {
         console.error(err);
         setLoading(false);
       });
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (scrollRef.current) {
+        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+        const cardWidth = scrollRef.current.firstElementChild?.clientWidth || 120;
+        
+        if (scrollLeft + clientWidth >= scrollWidth - 10) {
+          scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          scrollRef.current.scrollBy({ left: cardWidth + 12, behavior: 'smooth' });
+        }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleSearch = (q: string) => {
@@ -153,8 +171,13 @@ function HomePage() {
 
   const categories = Array.from(new Set(allSeries.flatMap(s => s.tags || []))).filter(Boolean);
 
+  // Split videos based on provider to simulate ID vs CN
+  const rilisanTerbaru = series.filter(s => 
+    activeTabTerbaru === 'ID' ? s.provider === 'pinedrama' : s.provider === 'dramabox'
+  ).slice(1, 15); // increased items
+
   return (
-    <div className="pb-20 min-h-screen">
+    <div className="pb-24 min-h-screen">
       <Header pageTitle={pageTitle} onSearch={handleSearch} />
 
       {location === "/discover" && categories.length > 0 && (
@@ -176,7 +199,7 @@ function HomePage() {
           <Loader2 className="animate-spin text-red-500" size={32} />
         </div>
       ) : (
-        <main className="px-4 space-y-8 mt-2">
+        <main className="px-3 space-y-3 mt-2">
           {/* Banner */}
           {series.length > 0 && (
             <section>
@@ -187,7 +210,7 @@ function HomePage() {
                   <h2 className="text-2xl font-bold text-white mb-1 line-clamp-1">{series[0].title}</h2>
                   <p className="text-slate-300 text-sm line-clamp-2">{series[0].desc}</p>
                   <Link to={`/watch/feed?id=${series[0].id}&provider=${series[0].provider || 'pinedrama'}`} className="mt-4 bg-white text-black font-semibold py-2 px-4 rounded-full flex items-center justify-center gap-2 w-fit">
-                    <Play size={16} /> Tonton Sekarang
+                    <Play size={16} fill="black" /> Tonton Sekarang
                   </Link>
                 </div>
               </div>
@@ -196,38 +219,57 @@ function HomePage() {
 
           {/* Trending Section */}
           <section>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">Rilisan Terbaru</h3>
-              <span className="text-sm text-red-500 font-medium">Lihat Semua</span>
+            {/* Tabs for ID or CN */}
+            <div className="flex bg-slate-800/80 p-1 rounded-xl mb-3">
+               <button 
+                  onClick={() => setActiveTabTerbaru('ID')}
+                  className={`flex-1 text-sm font-bold py-2 px-2 sm:px-4 rounded-lg transition-all ${activeTabTerbaru === 'ID' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                >
+                 INDONESIA
+               </button>
+               <button 
+                  onClick={() => setActiveTabTerbaru('CN')}
+                   className={`flex-1 text-sm font-bold py-2 px-2 sm:px-4 rounded-lg transition-all ${activeTabTerbaru === 'CN' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                >
+                 CHINA SUB INDO
+               </button>
             </div>
-            <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide">
-              {series.slice(1, 6).map((item) => (
-                <Link key={item.id} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="min-w-[120px] sm:min-w-[140px] snap-start shrink-0 group">
-                  <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-2">
-                    <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">
-                      {item.episodes} Eps
-                    </div>
-                  </div>
-                  <h4 className="text-sm font-medium text-white line-clamp-1">{item.title}</h4>
-                </Link>
-              ))}
-            </div>
+
+            {rilisanTerbaru.length > 0 ? (
+               <div ref={scrollRef} className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide no-scrollbar">
+                 {rilisanTerbaru.map((item) => (
+                   <Link key={item.id} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="min-w-[100px] w-[100px] snap-start shrink-0 group">
+                     <div className="aspect-video rounded-lg overflow-hidden relative mb-1">
+                       <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                       <div className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded-tl font-medium">
+                         {item.episodes} Eps
+                       </div>
+                     </div>
+                     <h4 className="text-[10px] font-medium text-white line-clamp-2 leading-tight">{item.title}</h4>
+                   </Link>
+                 ))}
+               </div>
+            ) : (
+                <div className="py-8 text-center text-slate-500">Belum ada rilis baru untuk kategori ini</div>
+            )}
           </section>
 
           {/* Pilihan Untukmu */}
           <section>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">Rekomendasi</h3>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-[16px] font-bold text-white">Rekomendasi</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {series.slice(6).map((item, idx) => (
-                <Link key={`fy-${item.id}`} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="group">
-                  <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5">
+              {series.slice(5).map((item, idx) => (
+                <Link key={`fy-${item.id}-${idx}`} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="group">
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-1.5">
                     <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <div className="absolute top-0 right-0 bg-red-600/90 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded-bl font-bold">
+                       {item.provider === 'dramabox' ? 'CN' : 'ID'}
+                    </div>
                   </div>
-                  <h4 className="text-sm font-medium text-white line-clamp-1">{item.title}</h4>
-                  <p className="text-xs text-slate-400">{item.episodes} Episode</p>
+                  <h4 className="text-[12px] font-medium text-white line-clamp-2 leading-snug mb-0.5">{item.title}</h4>
+                  <p className="text-[10px] text-slate-400 font-medium">{item.episodes} Episode</p>
                 </Link>
               ))}
             </div>
@@ -261,6 +303,26 @@ function VideoFeedPage() {
       .then(data => {
         if (data.success && data.data) {
           setTotalEpisodes(data.data.total_episodes || 0);
+          
+          try {
+            const history = JSON.parse(localStorage.getItem('watch_history') || '[]');
+            // Try to extract title, cover from local parameters if data doesn't have it explicitly
+            const title = data.data.title || `Drama ${collectionId}`;
+            const cover = data.data.cover || '';
+            const historyItem = { 
+              ...data.data, 
+              id: collectionId, 
+              provider: provider, 
+              title: title,
+              cover: cover,
+              lastWatched: Date.now() 
+            };
+            const updatedHistory = history.filter((h: any) => h.id !== collectionId);
+            updatedHistory.unshift(historyItem);
+            localStorage.setItem('watch_history', JSON.stringify(updatedHistory));
+          } catch (e) {
+            console.error('Failed to save to history', e);
+          }
         }
       })
       .catch(console.error);
@@ -499,6 +561,63 @@ function SearchIcon({ size }: { size?: number }) {
   );
 }
 
+function LibraryPage() {
+  const [history, setHistory] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('watch_history') || '[]');
+      setHistory(saved);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  return (
+    <div className="pb-24 min-h-screen bg-black">
+      <header className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-slate-800 z-40 px-4 py-3.5 flex items-center justify-between">
+        <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-rose-500">
+          Library
+        </h1>
+      </header>
+      
+      <main className="px-4 py-4 space-y-6">
+        <section>
+          <h2 className="text-white font-bold text-[16px] mb-3">Terkini Ditonton</h2>
+          {history.length > 0 ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+              {history.map((item, idx) => (
+                <Link key={item.id + '-' + idx} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="group">
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-1.5 bg-slate-800">
+                    {item.cover ? (
+                      <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">
+                        No Cover
+                      </div>
+                    )}
+                    <div className="absolute top-0 right-0 bg-red-600/90 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded-bl font-bold">
+                       {item.provider === 'dramabox' ? 'CN' : 'ID'}
+                    </div>
+                  </div>
+                  <h4 className="text-[12px] font-medium text-white line-clamp-2 leading-snug mb-0.5">{item.title}</h4>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              <Film size={40} className="mx-auto mb-2 opacity-50" />
+              <p>Belum ada history tontonan</p>
+            </div>
+          )}
+        </section>
+      </main>
+      
+      <BottomNav />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <div className="min-h-screen bg-black text-slate-100 font-sans md:max-w-md md:mx-auto md:border-x md:border-slate-800 shadow-2xl relative overflow-x-hidden">
@@ -506,7 +625,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/discover" element={<HomePage />} />
-          <Route path="/library" element={<HomePage />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/profile" element={<HomePage />} />
           <Route path="/watch/feed" element={<VideoFeedPage />} />
         </Routes>

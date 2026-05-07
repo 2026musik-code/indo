@@ -176,7 +176,12 @@ async function startServer() {
     const ep = req.params.ep;
     const secretKey = "Sansekai-SekaiDrama";
     
-    const url = `https://drama.sansekai.my.id/api/${provider}/episode?collection_id=${id}&episodeNumber=${ep}`;
+    let url = "";
+    if (provider === "dramabox") {
+      url = `https://drama.sansekai.my.id/api/dramabox/episode?bookId=${id}&episodeNumber=${ep}`;
+    } else {
+      url = `https://drama.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
+    }
 
     try {
       const response = await fetch(url, {
@@ -187,27 +192,47 @@ async function startServer() {
         }
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError: any) {
+        return res.status(response.status !== 200 ? response.status : 500).json({ 
+          success: false, 
+          message: "Upstream API error: Format tidak valid", 
+          debug: responseText.slice(0, 100) 
+        });
+      }
       
       if (!result.data) {
         return res.status(404).json({ success: false, message: "Data tidak ditemukan." });
       }
 
       const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
-      const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+      const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+      
+      let decryptedData;
+      try {
+        decryptedData = JSON.parse(decryptedText);
+      } catch (decryptErr) {
+        return res.status(500).json({ success: false, message: "Gagal mendekripsi video." });
+      }
 
-      const videoUrl = decryptedData.best_url || (decryptedData.main && decryptedData.main.indo_hd_cdn_urls && decryptedData.main.indo_hd_cdn_urls[0]);
+      // Dramabox data parsing may be slightly different from pinedrama
+      // Usually dramabox has videoUrl directly, pinedrama has main.indo_hd_cdn_urls
+      const videoUrl = decryptedData.best_url || (decryptedData.main && decryptedData.main.indo_hd_cdn_urls && decryptedData.main.indo_hd_cdn_urls[0]) || decryptedData.videoUrl || decryptedData.url;
 
       if (!videoUrl) {
-        return res.status(404).json({ success: false, message: "URL video tidak ditemukan" });
+        return res.status(404).json({ success: false, message: "URL video tidak ditemukan di data." });
       }
 
       return res.json({
         success: true,
-        title: decryptedData.title,
+        title: decryptedData.title || decryptedData.bookName || '',
         videoUrl: videoUrl,
         rawUrl: videoUrl,
-        quality: decryptedData.quality
+        quality: decryptedData.quality || 'HD'
       });
 
     } catch (error: any) {
