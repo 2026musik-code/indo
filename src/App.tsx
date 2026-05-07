@@ -115,10 +115,12 @@ function HomePage() {
   if (location === "/library") pageTitle = "Library";
   if (location === "/profile") pageTitle = "Profile";
 
+  const API_BASE = import.meta.env.VITE_API_URL || '';
+
   useEffect(() => {
     let retryCount = 0;
     const fetchLatest = () => {
-      fetch('/api/latest')
+      fetch(`${API_BASE}/api/latest`)
         .then(res => {
           if (!res.ok) {
             if ((res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 3) {
@@ -326,7 +328,7 @@ function VideoFeedPage() {
   // Fetch details to get total episodes
   useEffect(() => {
     if (!collectionId) return;
-    fetch(`/api/details/${provider}/${collectionId}`)
+    fetch(`${API_BASE}/api/details/${provider}/${collectionId}`)
       .then(res => {
         if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
@@ -364,7 +366,7 @@ function VideoFeedPage() {
     setLoading(true);
     
     // Fetch episode currentEpisode
-    fetch(`/api/play/${provider}/${collectionId}/${currentEpisode}`)
+    fetch(`${API_BASE}/api/play/${provider}/${collectionId}/${currentEpisode}`)
       .then(res => {
         if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
@@ -379,7 +381,7 @@ function VideoFeedPage() {
         if (data.videoUrl) {
           setVideos([{
             id: currentEpisode.toString(),
-            url: `/api/proxy-video?url=${encodeURIComponent(data.videoUrl)}`,
+            url: `${API_BASE}/api/proxy-video?url=${encodeURIComponent(data.videoUrl)}`,
             rawUrl: data.rawUrl,
             title: data.title || `Episode ${currentEpisode}`,
             description: '',
