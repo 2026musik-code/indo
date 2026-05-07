@@ -207,7 +207,7 @@ function HomePage() {
           {series.length > 0 && (
             <section>
               <div className="w-full aspect-[4/5] sm:aspect-video bg-slate-800 rounded-xl overflow-hidden relative group cursor-pointer">
-                <img src={series[0].cover} alt="Featured" className="w-full h-full object-cover" />
+                <img src={series[0].cover} alt="Featured" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col justify-end p-4">
                   <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded w-fit mb-2">Baru Rilis</span>
                   <h2 className="text-2xl font-bold text-white mb-1 line-clamp-1">{series[0].title}</h2>
@@ -243,7 +243,7 @@ function HomePage() {
                  {rilisanTerbaru.map((item) => (
                    <Link key={item.id} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="min-w-[100px] w-[100px] snap-start shrink-0 group">
                      <div className="aspect-video rounded-lg overflow-hidden relative mb-1">
-                       <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                       <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
                        <div className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded-tl font-medium">
                          {item.episodes} Eps
                        </div>
@@ -266,7 +266,7 @@ function HomePage() {
               {series.slice(5).map((item, idx) => (
                 <Link key={`fy-${item.id}-${idx}`} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="group">
                   <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-1.5">
-                    <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
                     <div className="absolute top-0 right-0 bg-red-600/90 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded-bl font-bold">
                        {item.provider === 'dramabox' ? 'CN' : 'ID'}
                     </div>
@@ -599,7 +599,7 @@ function LibraryPage() {
                 <Link key={item.id + '-' + idx} to={`/watch/feed?id=${item.id}&provider=${item.provider || 'pinedrama'}`} className="group">
                   <div className="aspect-[3/4] rounded-lg overflow-hidden relative mb-1.5 bg-slate-800">
                     {item.cover ? (
-                      <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <img src={item.cover} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">
                         No Cover
