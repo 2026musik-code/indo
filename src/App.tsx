@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route, useNavigate, Link, useSearchPar
 import { Home, Compass, Film, User, Play, ChevronLeft, MoreHorizontal, Heart, MessageCircle, Share2, Bookmark, Loader2, Download, List, Search } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 
+const API_BASE = '';
+
 // MOCK DATA for Video Feed
 const MOCK_VIDEOS = [
   {
@@ -114,8 +116,6 @@ function HomePage() {
   if (location === "/discover") pageTitle = "Discover";
   if (location === "/library") pageTitle = "Library";
   if (location === "/profile") pageTitle = "Profile";
-
-  const API_BASE = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
     let retryCount = 0;

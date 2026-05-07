@@ -173,7 +173,19 @@ export default {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       
-      return new Response("Not found", { status: 404 });
+      // Fallback API response
+      if (path.startsWith('/api')) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      // If it's not an API request, serve the static assets
+      let response = await env.ASSETS.fetch(request);
+      if (response.status === 404 || response.status === 403) {
+        const indexRequest = new Request(new URL('/', request.url), request);
+        response = await env.ASSETS.fetch(indexRequest);
+      }
+      return response;
+
     } catch (e) {
       return new Response(JSON.stringify({ success: false, message: e.message }), { status: 500, headers: corsHeaders });
     }
