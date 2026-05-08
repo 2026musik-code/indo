@@ -120,7 +120,8 @@ function HomePage() {
   useEffect(() => {
     let retryCount = 0;
     const fetchLatest = () => {
-      fetch(`${API_BASE}/api/latest`)
+      const userIp = localStorage.getItem('selected_proxy_ip') || 'Auto';
+      fetch(`${API_BASE}/api/latest`, { headers: { 'x-user-ip': userIp } })
         .then(res => {
           if (!res.ok) {
             if ((res.status === 502 || res.status === 503 || res.status === 504) && retryCount < 3) {
@@ -228,6 +229,8 @@ function HomePage() {
           <p className="text-red-400 font-medium mb-2">Error: {errorMsg}</p>
           <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-800 rounded-lg text-sm">Coba Lagi</button>
         </div>
+      ) : location === "/profile" ? (
+        <ProfileContent />
       ) : (
         <main className="px-3 space-y-3 mt-2">
           {/* Banner */}
@@ -328,7 +331,8 @@ function VideoFeedPage() {
   // Fetch details to get total episodes
   useEffect(() => {
     if (!collectionId) return;
-    fetch(`${API_BASE}/api/details/${provider}/${collectionId}`)
+    const userIp = localStorage.getItem('selected_proxy_ip') || 'Auto';
+    fetch(`${API_BASE}/api/details/${provider}/${collectionId}`, { headers: { 'x-user-ip': userIp } })
       .then(res => {
         if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
@@ -366,7 +370,8 @@ function VideoFeedPage() {
     setLoading(true);
     
     // Fetch episode currentEpisode
-    fetch(`${API_BASE}/api/play/${provider}/${collectionId}/${currentEpisode}`)
+    const userIp = localStorage.getItem('selected_proxy_ip') || 'Auto';
+    fetch(`${API_BASE}/api/play/${provider}/${collectionId}/${currentEpisode}`, { headers: { 'x-user-ip': userIp } })
       .then(res => {
         if (!res.ok) throw new Error("API Route failed: " + res.status);
         return res.json();
@@ -381,13 +386,13 @@ function VideoFeedPage() {
         if (data.videoUrl) {
           setVideos([{
             id: currentEpisode.toString(),
-            url: `${API_BASE}/api/proxy-video?url=${encodeURIComponent(data.videoUrl)}`,
-            rawUrl: data.rawUrl,
+            url: data.videoUrl,
+            rawUrl: data.rawUrl || data.videoUrl,
             title: data.title || `Episode ${currentEpisode}`,
             description: '',
             likes: '10K',
             comments: '120',
-            series: 'SekaiDrama'
+            series: provider === 'dramabox' ? 'DramaBox' : 'PineDrama'
           }]);
         }
         setLoading(false);
@@ -481,7 +486,12 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
 
   useEffect(() => {
     if (isActive && videoRef.current) {
-      videoRef.current.play().catch(() => setIsPlaying(false));
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          // Ignore AbortError and NotAllowedError and interruption errors
+        });
+      }
       setIsPlaying(true);
     } else if (!isActive && videoRef.current) {
       videoRef.current.pause();
@@ -494,7 +504,12 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
     if (isPlaying) {
       videoRef.current.pause();
     } else {
-      videoRef.current.play();
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          // Ignore interruption errors
+        });
+      }
     }
     setIsPlaying(!isPlaying);
   };
@@ -594,6 +609,57 @@ function SearchIcon({ size }: { size?: number }) {
       <circle cx="11" cy="11" r="8"></circle>
       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
     </svg>
+  );
+}
+
+function ProfileContent() {
+  const [proxies, setProxies] = useState<string[]>([]);
+  const [selectedIP, setSelectedIP] = useState<string>(localStorage.getItem('selected_proxy_ip') || 'Auto');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/proxies')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setProxies(data.data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleSelectIP = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const ip = e.target.value;
+    setSelectedIP(ip);
+    localStorage.setItem('selected_proxy_ip', ip);
+  };
+
+  return (
+    <main className="px-4 py-6 space-y-6">
+      <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+        <h2 className="text-xl font-bold mb-4 text-white">Proxy Settings</h2>
+        <p className="text-sm text-slate-400 mb-4">Pilih IP proxy untuk menyembunyikan identitas atau mengatasi pembatasan IP (429).</p>
+        
+        {loading ? (
+          <div className="flex justify-center my-4">
+            <Loader2 className="animate-spin text-red-500" size={24} />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-slate-300 block">Pilih IP:</label>
+            <select
+              value={selectedIP}
+              onChange={handleSelectIP}
+              className="w-full bg-black border border-slate-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-500"
+            >
+              <option value="Auto">Auto (Random & Rotate on Limit)</option>
+              {proxies.map(ip => (
+                <option key={ip} value={ip}>{ip}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
 

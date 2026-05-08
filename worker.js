@@ -174,9 +174,12 @@ export default {
         const id = parts[4];
         const ep = parts[5];
         
-        const target = provider === 'dramabox' ? 
-          `https://drama.sansekai.my.id/api/dramabox/episode?bookId=${id}&episodeNumber=${ep}` : 
-          `https://api.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
+        let target = "";
+        if (provider === 'dramabox') {
+          target = `https://api.sansekai.my.id/api/dramabox/allepisode?bookId=${id}`;
+        } else {
+          target = `https://api.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
+        }
           
         const response = await fetch(target, {
           headers: fakeHeaders
@@ -185,26 +188,55 @@ export default {
         if (!response.ok) return new Response(JSON.stringify({ success: false }), { status: response.status, headers: corsHeaders });
         const result = await response.json();
         let decryptedData;
-        if (result.data && typeof result.data === 'string') {
-          const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
-          decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+
+        if (provider === 'dramabox') {
+          if (Array.isArray(result)) {
+            decryptedData = result;
+          } else if (result.data && typeof result.data === 'string') {
+            const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
+            decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+          } else {
+            decryptedData = result;
+          }
         } else {
-          decryptedData = result;
+          if (result.data && typeof result.data === 'string') {
+            const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
+            decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+          } else {
+            decryptedData = result;
+          }
         }
         
         let videoUrl = "";
+        let title = "";
+        let quality = "";
+
         if (provider === 'dramabox') {
-          videoUrl = decryptedData.videoUrl || decryptedData.url;
+          // decryptedData is an array of all episodes
+          const epIndex = parseInt(ep) - 1;
+          const episodeData = decryptedData[epIndex] || decryptedData[0];
+          title = episodeData?.chapterName || `Episode ${ep}`;
+          
+          if (episodeData && episodeData.cdnList && episodeData.cdnList.length > 0) {
+            const cdn = episodeData.cdnList.find(c => c.isDefault === 1) || episodeData.cdnList[0];
+            if (cdn && cdn.videoPathList && cdn.videoPathList.length > 0) {
+              const video = cdn.videoPathList.find(v => v.isDefault === 1) || cdn.videoPathList[0];
+              videoUrl = video.videoPath;
+              quality = video.quality + "p";
+            }
+          }
         } else {
+          title = decryptedData.title;
+          quality = decryptedData.quality;
           videoUrl = decryptedData.best_url || (decryptedData.main && decryptedData.main.indo_hd_cdn_urls && decryptedData.main.indo_hd_cdn_urls[0]) || "";
         }
         
         return new Response(JSON.stringify({
           success: true,
-          title: decryptedData.title,
+          title,
           videoUrl,
           rawUrl: videoUrl,
-          quality: decryptedData.quality
+          quality
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       

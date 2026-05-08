@@ -10,20 +10,89 @@ async function startServer() {
   // JSON parsing middleware
   app.use(express.json());
 
+  let proxyIPs: string[] = [];
+  let lastFetch = 0;
+
+  const loadProxyIPs = async () => {
+    try {
+      if (Date.now() - lastFetch > 1000 * 60 * 60) {
+        const response = await fetch('https://raw.githubusercontent.com/FoolVPN-ID/Nautica/main/proxyList.txt');
+        const text = await response.text();
+        const ips = text.split('\n')
+          .map(line => line.split(',')[0].trim())
+          .filter(ip => /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(ip));
+        if (ips.length > 0) {
+          proxyIPs = Array.from(new Set(ips));
+          lastFetch = Date.now();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load proxy IPs:', e);
+    }
+  };
+  
+  loadProxyIPs();
+
+  const getFakeIP = () => {
+    if (proxyIPs.length > 0) {
+      return proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
+    }
+    const r = () => Math.floor(Math.random() * 255) + 1;
+    return `${r()}.${r()}.${r()}.${r()}`;
+  };
+
+  const getHeaders = (reqIp?: string) => {
+    let fakeIP = reqIp === "Auto" || !reqIp ? getFakeIP() : reqIp;
+    if (!fakeIP) fakeIP = getFakeIP();
+    return {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
+      "Referer": "https://drama.sansekai.my.id/",
+      "Accept": "application/json",
+      "X-Forwarded-For": fakeIP,
+      "X-Real-IP": fakeIP,
+      "Client-IP": fakeIP
+    };
+  };
+
+  const safeFetch = async (url: string, userIp?: string) => {
+    let attempt = 0;
+    let currentIp = userIp;
+    const maxAttempts = 10;
+    while (attempt < maxAttempts) {
+      const headers = getHeaders(currentIp);
+      try {
+        const res = await fetch(url, { headers });
+        if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504 || res.status === 403) {
+          attempt++;
+          // Auto switch IP on limit
+          currentIp = "Auto";
+          await new Promise(r => setTimeout(r, 300));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        attempt++;
+        currentIp = "Auto";
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+    return await fetch(url, { headers: getHeaders(currentIp) });
+  };
+
+  app.get('/api/proxies', async (req, res) => {
+    await loadProxyIPs();
+    return res.json({ success: true, data: proxyIPs });
+  });
+
   // API routing
   app.get("/api/latest", async (req, res) => {
     try {
       const secretKey = "Sansekai-SekaiDrama";
-      const headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
-        "Referer": "https://drama.sansekai.my.id/",
-        "Accept": "application/json"
-      };
-
-      // Make both requests
+      const userIp = req.headers['x-user-ip'] as string;
+      
       const [pineRes, dramaRes] = await Promise.all([
-        fetch('https://drama.sansekai.my.id/api/pinedrama/trending', { headers }),
-        fetch('https://drama.sansekai.my.id/api/dramabox/latest', { headers })
+        safeFetch('https://api.sansekai.my.id/api/pinedrama/trending', userIp),
+        safeFetch('https://api.sansekai.my.id/api/dramabox/foryou?page=1', userIp)
       ]);
 
       let cleanData: any[] = [];
@@ -31,9 +100,15 @@ async function startServer() {
       // Process Pinedrama
       if (pineRes.ok) {
         const pineResult = await pineRes.json();
-        if (pineResult.data) {
+        let pineData = null;
+        if (pineResult.data && typeof pineResult.data === 'string') {
           const pineBytes = CryptoJS.AES.decrypt(pineResult.data, secretKey);
-          const pineData = JSON.parse(pineBytes.toString(CryptoJS.enc.Utf8));
+          pineData = JSON.parse(pineBytes.toString(CryptoJS.enc.Utf8));
+        } else {
+          pineData = pineResult;
+        }
+        
+        if (pineData) {
           const pineFormatted = (pineData.collections || []).map((item: any) => ({
             id: item.collection_id,
             title: item.title,
@@ -51,22 +126,28 @@ async function startServer() {
       // Process Dramabox
       if (dramaRes.ok) {
         const dramaResult = await dramaRes.json();
-        if (dramaResult.data) {
+        let dramaData: any[] = [];
+        
+        if (Array.isArray(dramaResult)) {
+          dramaData = dramaResult;
+        } else if (dramaResult.data && typeof dramaResult.data === 'string') {
           const dramaBytes = CryptoJS.AES.decrypt(dramaResult.data, secretKey);
-          const dramaData = JSON.parse(dramaBytes.toString(CryptoJS.enc.Utf8));
-          // Dramabox returns an array directly
-          const dramaFormatted = (Array.isArray(dramaData) ? dramaData : []).map((item: any) => ({
-            id: item.bookId,
-            title: item.bookName,
-            cover: item.coverWap,
-            episodes: item.chapterCount,
-            desc: item.introduction,
-            views: item.rankVo?.hotCode || '',
-            tags: item.tags || [],
-            provider: 'dramabox'
-          }));
-          cleanData = [...cleanData, ...dramaFormatted];
+          dramaData = JSON.parse(dramaBytes.toString(CryptoJS.enc.Utf8));
+        } else if (dramaResult.data) {
+          dramaData = dramaResult.data;
         }
+
+        const dramaFormatted = dramaData.map((item: any) => ({
+          id: item.bookId || item.id,
+          title: item.bookName || item.title,
+          cover: item.coverWap || item.cover,
+          episodes: item.chapterCount || item.episodes,
+          desc: item.introduction || item.desc,
+          views: item.rankVo?.hotCode || item.views || '',
+          tags: item.tags || [],
+          provider: 'dramabox'
+        }));
+        cleanData = [...cleanData, ...dramaFormatted];
       }
 
       // Send to frontend
@@ -126,34 +207,30 @@ async function startServer() {
     const provider = req.params.provider;
     const id = req.params.id;
     const secretKey = "Sansekai-SekaiDrama";
+    const userIp = req.headers['x-user-ip'] as string;
     
     let url = "";
     if (provider === "dramabox") {
-      url = `https://drama.sansekai.my.id/api/dramabox/detail?bookId=${id}`;
+      url = `https://api.sansekai.my.id/api/dramabox/detail?bookId=${id}`;
     } else {
-      url = `https://drama.sansekai.my.id/api/pinedrama/detail?collection_id=${id}`;
+      url = `https://api.sansekai.my.id/api/pinedrama/detail?collection_id=${id}`;
     }
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": "https://drama.sansekai.my.id/",
-          "Accept": "application/json"
-        }
-      });
+      const response = await safeFetch(url, userIp);
       
       if (response.status !== 200) {
         return res.status(response.status).json({ success: false, message: "Penyedia tidak mengembalikan detail." });
       }
 
       const result = await response.json();
-      if (!result.data) {
-        return res.json({ success: false, message: "Response invalid." });
+      let rawData;
+      if (result.data && typeof result.data === 'string') {
+        const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
+        rawData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+      } else {
+        rawData = result;
       }
-
-      const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
-      const rawData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 
       res.json({
         success: true,
@@ -175,22 +252,17 @@ async function startServer() {
     const id = req.params.id;
     const ep = req.params.ep;
     const secretKey = "Sansekai-SekaiDrama";
+    const userIp = req.headers['x-user-ip'] as string;
     
     let url = "";
     if (provider === "dramabox") {
-      url = `https://drama.sansekai.my.id/api/dramabox/episode?bookId=${id}&episodeNumber=${ep}`;
+      url = `https://api.sansekai.my.id/api/dramabox/allepisode?bookId=${id}`;
     } else {
-      url = `https://drama.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
+      url = `https://api.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
     }
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
-          "Referer": "https://drama.sansekai.my.id/",
-          "Accept": "application/json"
-        }
-      });
+      const response = await safeFetch(url, userIp);
 
       const responseText = await response.text();
       let result;
@@ -205,23 +277,48 @@ async function startServer() {
         });
       }
       
-      if (!result.data) {
-        return res.status(404).json({ success: false, message: "Data tidak ditemukan." });
-      }
-
-      const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
-      const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
-      
       let decryptedData;
-      try {
-        decryptedData = JSON.parse(decryptedText);
-      } catch (decryptErr) {
-        return res.status(500).json({ success: false, message: "Gagal mendekripsi video." });
+
+      if (provider === 'dramabox') {
+        if (Array.isArray(result)) {
+          decryptedData = result;
+        } else if (result.data && typeof result.data === 'string') {
+          const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
+          decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        } else {
+          decryptedData = result;
+        }
+      } else {
+        if (result.data && typeof result.data === 'string') {
+          const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
+          decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        } else {
+          decryptedData = result;
+        }
       }
 
-      // Dramabox data parsing may be slightly different from pinedrama
-      // Usually dramabox has videoUrl directly, pinedrama has main.indo_hd_cdn_urls
-      const videoUrl = decryptedData.best_url || (decryptedData.main && decryptedData.main.indo_hd_cdn_urls && decryptedData.main.indo_hd_cdn_urls[0]) || decryptedData.videoUrl || decryptedData.url;
+      let videoUrl = "";
+      let title = "";
+      let quality = "";
+
+      if (provider === 'dramabox') {
+        const epIndex = parseInt(ep) - 1;
+        const episodeData = decryptedData[epIndex] || decryptedData[0];
+        title = episodeData?.chapterName || `Episode ${ep}`;
+        
+        if (episodeData && episodeData.cdnList && episodeData.cdnList.length > 0) {
+          const cdn = episodeData.cdnList.find((c: any) => c.isDefault === 1) || episodeData.cdnList[0];
+          if (cdn && cdn.videoPathList && cdn.videoPathList.length > 0) {
+            const video = cdn.videoPathList.find((v: any) => v.isDefault === 1) || cdn.videoPathList[0];
+            videoUrl = video.videoPath;
+            quality = video.quality + "p";
+          }
+        }
+      } else {
+        title = decryptedData.title;
+        quality = decryptedData.quality || 'HD';
+        videoUrl = decryptedData.best_url || (decryptedData.main && decryptedData.main.indo_hd_cdn_urls && decryptedData.main.indo_hd_cdn_urls[0]) || "";
+      }
 
       if (!videoUrl) {
         return res.status(404).json({ success: false, message: "URL video tidak ditemukan di data." });
@@ -229,10 +326,10 @@ async function startServer() {
 
       return res.json({
         success: true,
-        title: decryptedData.title || decryptedData.bookName || '',
+        title: title,
         videoUrl: videoUrl,
         rawUrl: videoUrl,
-        quality: decryptedData.quality || 'HD'
+        quality: quality
       });
 
     } catch (error: any) {
