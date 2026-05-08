@@ -90,9 +90,10 @@ async function startServer() {
       const secretKey = "Sansekai-SekaiDrama";
       const userIp = req.headers['x-user-ip'] as string;
       
-      const [pineRes, dramaRes] = await Promise.all([
+      const [pineRes, dramaRes, reelRes] = await Promise.all([
         safeFetch('https://api.sansekai.my.id/api/pinedrama/trending', userIp),
-        safeFetch('https://api.sansekai.my.id/api/dramabox/foryou?page=1', userIp)
+        safeFetch('https://api.sansekai.my.id/api/dramabox/foryou?page=1', userIp),
+        safeFetch('https://api.sansekai.my.id/api/reelshort/foryou', userIp)
       ]);
 
       let cleanData: any[] = [];
@@ -148,6 +149,24 @@ async function startServer() {
           provider: 'dramabox'
         }));
         cleanData = [...cleanData, ...dramaFormatted];
+      }
+
+      // Process ReelShort
+      if (reelRes.ok) {
+        const reelResult = await reelRes.json();
+        if (reelResult.success && reelResult.data?.lists) {
+          const reelFormatted = reelResult.data.lists.map((item: any) => ({
+            id: item.book_id,
+            title: item.book_title,
+            cover: item.book_pic,
+            episodes: item.chapter_count || item.totalEpisodes || 0,
+            desc: item.special_desc || item.description || '',
+            views: item.read_count || '',
+            tags: item.theme || item.tag_list?.map((t:any) => t.tag_name) || [],
+            provider: 'reelshort'
+          }));
+          cleanData = [...cleanData, ...reelFormatted];
+        }
       }
 
       // Send to frontend
@@ -212,6 +231,8 @@ async function startServer() {
     let url = "";
     if (provider === "dramabox") {
       url = `https://api.sansekai.my.id/api/dramabox/detail?bookId=${id}`;
+    } else if (provider === "reelshort") {
+      url = `https://api.sansekai.my.id/api/reelshort/detail?bookId=${id}`;
     } else {
       url = `https://api.sansekai.my.id/api/pinedrama/detail?collection_id=${id}`;
     }
@@ -236,10 +257,10 @@ async function startServer() {
         success: true,
         data: {
           id: id,
-          title: provider === "dramabox" ? rawData.bookName : rawData.title,
-          desc: provider === "dramabox" ? rawData.introduction : rawData.description,
-          total_episodes: provider === "dramabox" ? rawData.chapterCount : rawData.total_episodes,
-          cover: provider === "dramabox" ? rawData.coverWap : (rawData.cover_urls?.[0] || ''),
+          title: provider === "reelshort" ? rawData.title : (provider === "dramabox" ? rawData.bookName : rawData.title),
+          desc: provider === "reelshort" ? rawData.description : (provider === "dramabox" ? rawData.introduction : rawData.description),
+          total_episodes: provider === "reelshort" ? rawData.totalEpisodes : (provider === "dramabox" ? rawData.chapterCount : rawData.total_episodes),
+          cover: provider === "reelshort" ? rawData.cover : (provider === "dramabox" ? rawData.coverWap : (rawData.cover_urls?.[0] || '')),
         }
       });
     } catch (e: any) {
@@ -257,6 +278,8 @@ async function startServer() {
     let url = "";
     if (provider === "dramabox") {
       url = `https://api.sansekai.my.id/api/dramabox/allepisode?bookId=${id}`;
+    } else if (provider === "reelshort") {
+      url = `https://api.sansekai.my.id/api/reelshort/episode?bookId=${id}&episodeNumber=${ep}`;
     } else {
       url = `https://api.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
     }
@@ -288,6 +311,8 @@ async function startServer() {
         } else {
           decryptedData = result;
         }
+      } else if (provider === 'reelshort') {
+        decryptedData = result;
       } else {
         if (result.data && typeof result.data === 'string') {
           const bytes = CryptoJS.AES.decrypt(result.data, secretKey);
@@ -313,6 +338,14 @@ async function startServer() {
             videoUrl = video.videoPath;
             quality = video.quality + "p";
           }
+        }
+      } else if (provider === 'reelshort') {
+        title = `Episode ${ep}`;
+        if (decryptedData.videoList && decryptedData.videoList.length > 0) {
+          // Prefer H264 for better browser compatibility
+          const video = decryptedData.videoList.find((v: any) => v.encode === 'H264') || decryptedData.videoList[0];
+          videoUrl = video.url;
+          quality = video.quality ? video.quality + 'p' : 'HD';
         }
       } else {
         title = decryptedData.title;

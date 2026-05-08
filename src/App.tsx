@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { Home, Compass, Film, User, Play, ChevronLeft, MoreHorizontal, Heart, MessageCircle, Share2, Bookmark, Loader2, Download, List, Search } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
+import Hls from 'hls.js';
 
 const API_BASE = '';
 
@@ -197,10 +198,13 @@ function HomePage() {
 
   const categories = Array.from(new Set(allSeries.flatMap(s => s.tags || []))).filter(Boolean);
 
-  // Split videos based on provider to simulate ID vs CN
-  const rilisanTerbaru = series.filter(s => 
-    activeTabTerbaru === 'ID' ? s.provider === 'pinedrama' : s.provider === 'dramabox'
-  ).slice(1, 15); // increased items
+  // Split videos based on provider
+  const rilisanTerbaru = series.filter(s => {
+    if (activeTabTerbaru === 'ID') return s.provider === 'pinedrama';
+    if (activeTabTerbaru === 'CN') return s.provider === 'dramabox';
+    if (activeTabTerbaru === 'REEL') return s.provider === 'reelshort';
+    return true;
+  }).slice(1, 20); // increased items
 
   return (
     <div className="pb-24 min-h-screen">
@@ -253,18 +257,24 @@ function HomePage() {
           {/* Trending Section */}
           <section>
             {/* Tabs for ID or CN */}
-            <div className="flex bg-slate-800/80 p-1 rounded-xl mb-3">
+            <div className="flex bg-slate-800/80 p-1 rounded-xl mb-3 overflow-x-auto no-scrollbar">
                <button 
                   onClick={() => setActiveTabTerbaru('ID')}
-                  className={`flex-1 text-sm font-bold py-2 px-2 sm:px-4 rounded-lg transition-all ${activeTabTerbaru === 'ID' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-none text-xs font-bold py-2 px-3 sm:px-4 rounded-lg transition-all whitespace-nowrap ${activeTabTerbaru === 'ID' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
                 >
                  INDONESIA
                </button>
                <button 
                   onClick={() => setActiveTabTerbaru('CN')}
-                   className={`flex-1 text-sm font-bold py-2 px-2 sm:px-4 rounded-lg transition-all ${activeTabTerbaru === 'CN' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                   className={`flex-none text-xs font-bold py-2 px-3 sm:px-4 rounded-lg transition-all whitespace-nowrap ${activeTabTerbaru === 'CN' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
                 >
                  CHINA SUB INDO
+               </button>
+               <button 
+                  onClick={() => setActiveTabTerbaru('REEL')}
+                   className={`flex-none text-xs font-bold py-2 px-3 sm:px-4 rounded-lg transition-all whitespace-nowrap ${activeTabTerbaru === 'REEL' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                >
+                 REELSHORT
                </button>
             </div>
 
@@ -483,13 +493,62 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
   const [isPlaying, setIsPlaying] = useState(true);
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [videoError, setVideoError] = useState('');
+
+  const formatTime = (time: number) => {
+    if (isNaN(time) || !isFinite(time)) return "00:00";
+    const m = Math.floor(time / 60).toString().padStart(2, '0');
+    const s = Math.floor(time % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  useEffect(() => {
+    let hls: Hls | null = null;
+    const videoElt = videoRef.current;
+    
+    if (videoElt && video.url) {
+      if (video.url.includes('.m3u8')) {
+        if (Hls.isSupported()) {
+          hls = new Hls({ startPosition: -1, capLevelToPlayerSize: true });
+          hls.loadSource(video.url);
+          hls.attachMedia(videoElt);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+             if (isActive) {
+               videoElt.play().catch(() => {});
+             }
+          });
+          hls.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal) {
+              setVideoError("Video stream error.");
+            }
+          });
+        } else if (videoElt.canPlayType('application/vnd.apple.mpegurl')) {
+          videoElt.src = video.url;
+        }
+      } else {
+        videoElt.src = video.url;
+      }
+    }
+
+    return () => {
+      if (hls) {
+        hls.destroy();
+      }
+    };
+  }, [video.url, isActive]);
 
   useEffect(() => {
     if (isActive && videoRef.current) {
+      setVideoError('');
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          // Ignore AbortError and NotAllowedError and interruption errors
+          if (error.name !== 'AbortError') {
+            console.error("Play error:", error);
+          }
         });
       }
       setIsPlaying(true);
@@ -497,7 +556,7 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
       videoRef.current.pause();
       setIsPlaying(false);
     }
-  }, [isActive]);
+  }, [isActive, video.url]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -507,7 +566,7 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          // Ignore interruption errors
+          console.error("Manual play error:", error);
         });
       }
     }
@@ -527,32 +586,73 @@ function VideoItem({ video, isActive }: { video: any, isActive: boolean, key?: s
   };
 
   return (
-    <div className="w-full h-full snap-start relative bg-slate-900 flex items-center justify-center">
+    <div className="w-full h-full snap-start relative bg-black flex items-center justify-center">
       {/* Actual Video Element */}
-      <video
-        ref={videoRef}
-        src={video.url}
-        className="w-full h-full object-cover"
-        loop
-        playsInline
-        referrerPolicy="no-referrer"
-        onClick={togglePlay}
-      />
+      {videoError ? (
+        <div className="text-white text-center p-4">
+          <p className="text-red-500 mb-2 font-bold">Error Memutar Video</p>
+          <p className="text-sm text-slate-400">{videoError}</p>
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          className="w-full h-full object-contain"
+          loop
+          playsInline
+          referrerPolicy="no-referrer"
+          onClick={togglePlay}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration);
+            setIsBuffering(false);
+            setVideoError('');
+          }}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => setIsBuffering(false)}
+          onError={(e) => {
+            console.error("Video element error:", e);
+            setVideoError("Video tidak tersedia atau bermasalah.");
+            setIsBuffering(false);
+          }}
+        />
+      )}
       
-      {/* Play/Pause Overlay indicator (optional, usually TikTok hides it when playing) */}
-      {!isPlaying && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+      {/* Play/Pause Overlay indicator */}
+      {!isPlaying && !videoError && !isBuffering && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none z-10">
           <div className="bg-black/40 p-4 rounded-full backdrop-blur-md">
             <Play size={40} className="text-white opacity-80" fill="white" />
           </div>
         </div>
       )}
 
+      {isBuffering && !videoError && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <Loader2 className="animate-spin text-white opacity-80" size={40} />
+        </div>
+      )}
+
+      {/* Scrubber / Progress Bar */}
+      {!videoError && duration > 0 && (
+         <div className="absolute bottom-1 left-0 right-0 z-20 px-4">
+           <div className="h-1 bg-white/20 rounded-full relative overflow-hidden">
+             <div 
+               className="absolute top-0 bottom-0 left-0 bg-red-500 transition-all duration-100"
+               style={{ width: `${(currentTime / duration) * 100}%` }}
+             />
+           </div>
+         </div>
+      )}
+
       {/* Info Overlay (Bottom Left) */}
       <div className="absolute bottom-6 left-4 right-16 z-10 flex flex-col gap-2 drop-shadow-md pointer-events-none">
         <h3 className="font-bold text-lg">{video.series}</h3>
         <p className="text-sm text-white/90 font-medium">{video.title}</p>
-        <p className="text-xs text-white/70 line-clamp-2">{video.description}</p>
+        {!videoError && duration > 0 && (
+          <p className="text-xs text-red-400 font-bold tracking-wider">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </p>
+        )}
       </div>
 
       {/* Actions (Bottom Right) */}
