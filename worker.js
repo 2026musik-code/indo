@@ -22,26 +22,46 @@ export default {
       'Access-Control-Max-Age': '86400',
     };
     
+    function bikinIPPalsu() {
+      const acak = () => Math.floor(Math.random() * 255) + 1;
+      return `${acak()}.${acak()}.${acak()}.${acak()}`;
+    }
+    
+    const ipPalsu = bikinIPPalsu();
+    const fakeHeaders = {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
+      "X-Forwarded-For": ipPalsu,
+      "X-Real-IP": ipPalsu,
+      "Client-IP": ipPalsu,
+      "Referer": "https://drama.sansekai.my.id/",
+      "Accept": "application/json"
+    };
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
 
     try {
       if (path === '/api/latest') {
-        const fetchHeaders = { "User-Agent": "Mozilla/5.0", "Referer": "https://drama.sansekai.my.id/" };
-        
         const [pineRes, dramaRes] = await Promise.all([
-          fetch('https://drama.sansekai.my.id/api/pinedrama/trending', { headers: fetchHeaders }),
-          fetch('https://drama.sansekai.my.id/api/dramabox/latest', { headers: fetchHeaders })
+          fetch('https://api.sansekai.my.id/api/pinedrama/trending', { headers: fakeHeaders }),
+          fetch('https://api.sansekai.my.id/api/dramabox/foryou?page=1', { headers: fakeHeaders })
         ]);
 
         let cleanData = [];
 
         if (pineRes.ok) {
           const pineResult = await pineRes.json();
-          if (pineResult.data) {
+          let pineData = null;
+          
+          if (pineResult.data && typeof pineResult.data === 'string') {
             const pineBytes = CryptoJS.AES.decrypt(pineResult.data, "Sansekai-SekaiDrama");
-            const pineData = JSON.parse(pineBytes.toString(CryptoJS.enc.Utf8));
+            pineData = JSON.parse(pineBytes.toString(CryptoJS.enc.Utf8));
+          } else {
+            pineData = pineResult;
+          }
+
+          if (pineData) {
             const pineFormatted = (pineData.collections || []).map((item) => ({
               id: item.collection_id,
               title: item.title,
@@ -58,16 +78,25 @@ export default {
 
         if (dramaRes.ok) {
           const dramaResult = await dramaRes.json();
-          if (dramaResult.data) {
+          let dramaData = [];
+          
+          if (Array.isArray(dramaResult)) {
+            dramaData = dramaResult;
+          } else if (dramaResult.data && typeof dramaResult.data === 'string') {
             const dramaBytes = CryptoJS.AES.decrypt(dramaResult.data, "Sansekai-SekaiDrama");
-            const dramaData = JSON.parse(dramaBytes.toString(CryptoJS.enc.Utf8));
-            const dramaFormatted = (Array.isArray(dramaData) ? dramaData : []).map((item) => ({
-              id: item.bookId,
-              title: item.bookName,
-              cover: item.coverWap,
-              episodes: item.chapterCount,
-              desc: item.introduction,
-              views: item.rankVo?.hotCode || '',
+            dramaData = JSON.parse(dramaBytes.toString(CryptoJS.enc.Utf8));
+          } else if (dramaResult.data) {
+            dramaData = dramaResult.data;
+          }
+
+          if (dramaData && dramaData.length > 0) {
+            const dramaFormatted = dramaData.map((item) => ({
+              id: item.bookId || item.id,
+              title: item.bookName || item.title,
+              cover: item.coverWap || item.cover,
+              episodes: item.chapterCount || item.episodes,
+              desc: item.introduction || item.desc,
+              views: item.rankVo?.hotCode || item.views || '',
               tags: item.tags || [],
               provider: 'dramabox'
             }));
@@ -87,11 +116,7 @@ export default {
         const targetUrl = url.searchParams.get('url');
         if (!targetUrl) return new Response('URL is required', { status: 400, headers: corsHeaders });
         
-        const fetchHeaders = new Headers({
-          "User-Agent": "Mozilla/5.0",
-          "Referer": "https://drama.sansekai.my.id/",
-          "Accept": "*/*"
-        });
+        const fetchHeaders = new Headers(fakeHeaders);
         
         const range = request.headers.get('Range');
         if (range) fetchHeaders.set('Range', range);
@@ -114,17 +139,22 @@ export default {
         const id = parts[4];
         
         const target = provider === "dramabox" ? 
-          `https://drama.sansekai.my.id/api/dramabox/detail?bookId=${id}` : 
-          `https://drama.sansekai.my.id/api/pinedrama/detail?collection_id=${id}`;
+          `https://api.sansekai.my.id/api/dramabox/detail?bookId=${id}` : 
+          `https://api.sansekai.my.id/api/pinedrama/detail?collection_id=${id}`;
           
         const response = await fetch(target, {
-          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://drama.sansekai.my.id/" }
+          headers: fakeHeaders
         });
         
         if (!response.ok) return new Response(JSON.stringify({ success: false }), { status: response.status, headers: corsHeaders });
         const result = await response.json();
-        const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
-        const rawData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        let rawData;
+        if (result.data && typeof result.data === 'string') {
+          const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
+          rawData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        } else {
+          rawData = result;
+        }
         
         return new Response(JSON.stringify({
           success: true,
@@ -146,16 +176,21 @@ export default {
         
         const target = provider === 'dramabox' ? 
           `https://drama.sansekai.my.id/api/dramabox/episode?bookId=${id}&episodeNumber=${ep}` : 
-          `https://drama.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
+          `https://api.sansekai.my.id/api/pinedrama/episode?collection_id=${id}&episodeNumber=${ep}`;
           
         const response = await fetch(target, {
-          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://drama.sansekai.my.id/" }
+          headers: fakeHeaders
         });
         
         if (!response.ok) return new Response(JSON.stringify({ success: false }), { status: response.status, headers: corsHeaders });
         const result = await response.json();
-        const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
-        const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        let decryptedData;
+        if (result.data && typeof result.data === 'string') {
+          const bytes = CryptoJS.AES.decrypt(result.data, "Sansekai-SekaiDrama");
+          decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        } else {
+          decryptedData = result;
+        }
         
         let videoUrl = "";
         if (provider === 'dramabox') {
